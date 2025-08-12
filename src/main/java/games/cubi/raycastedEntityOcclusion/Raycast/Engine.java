@@ -83,12 +83,16 @@ public class Engine {
         // ----- PHASE 1: SYNC GATHER -----
 
         if (!syncRecheck.isEmpty()) {
-            Logger.warning(syncRecheck.size() + " chunks failed to snapshot asynchronously, rechecking them now.");
+            if (cfg.debugMode) {
+                Logger.warning(syncRecheck.size() + " chunks failed to snapshot asynchronously, rechecking them now.");
+            }
             for (Chunk c : syncRecheck) {
                 if (c.isLoaded()) {
                     plugin.getChunkSnapshotManager().snapshotChunk(c);
                     syncRecheck.remove(c);
-                    Logger.info("Successfully rechecked chunk " + c.getX() + ", " + c.getZ() + " in world " + c.getWorld().getName());
+                    if (cfg.debugMode) {
+                        Logger.info("Successfully rechecked chunk " + c.getX() + ", " + c.getZ() + " in world " + c.getWorld().getName());
+                    }
                 }
             }
         }
@@ -272,8 +276,9 @@ public class Engine {
             if (data instanceof TileState tileData) {
                 p.sendBlockChange(location, block.getBlockData());
                 p.sendBlockUpdate(location, tileData);
-            } else
-                plugin.getLogger().warning("Attempting to show a block which isn't a tile entity at " + block.getX() + ", " + block.getY() + ", " + block.getZ());
+            } else if (plugin.getConfigManager().debugMode) {
+                Logger.warning("Attempting to show a block which isn't a tile entity at " + block.getX() + ", " + block.getY() + ", " + block.getZ());
+            }
         });
     }
 

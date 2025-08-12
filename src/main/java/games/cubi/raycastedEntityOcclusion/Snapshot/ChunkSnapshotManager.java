@@ -2,7 +2,6 @@ package games.cubi.raycastedEntityOcclusion.Snapshot;
 
 import games.cubi.raycastedEntityOcclusion.ConfigManager;
 import games.cubi.raycastedEntityOcclusion.Logger;
-import games.cubi.raycastedEntityOcclusion.Raycast.Engine;
 import games.cubi.raycastedEntityOcclusion.RaycastedEntityOcclusion;
 import games.cubi.raycastedEntityOcclusion.util.BlockPos;
 import games.cubi.raycastedEntityOcclusion.util.ChunkPos;
@@ -62,7 +61,9 @@ public class ChunkSnapshotManager {
                         World w = Bukkit.getWorld(pos.world());
 
                         if (w == null) {
-                            plugin.getLogger().warning("ChunkSnapshotManager: World " + pos.world() + " not found. Please report this on our discord (discord.cubi.games)'");
+                            if (cfg.debugMode) {
+                                plugin.getLogger().warning("ChunkSnapshotManager: World " + pos.world() + " not found. Please report this on our discord (discord.cubi.games)'");
+                            }
                             continue;
                         }
 
@@ -121,7 +122,7 @@ public class ChunkSnapshotManager {
                     d.tileEntities.remove(pos);
                 }
             }
-        } else {
+        } else if (cfg.debugMode) {
             Logger.error("Data map value empty, ignoring block update!");
         }
     }
@@ -168,7 +169,9 @@ public class ChunkSnapshotManager {
         Data d = dataMap.get(key(c));
         if (d == null) {
             //dataMap.put(key(c), takeSnapshot(c, System.currentTimeMillis())); infinite loop
-            System.err.println("ChunkSnapshotManager: No snapshot for " + c + " Please report this on our discord (discord.cubi.games)'");
+            if (cfg.debugMode) {
+                System.err.println("ChunkSnapshotManager: No snapshot for " + c + " Please report this on our discord (discord.cubi.games)'");
+            }
             return loc.getBlock().getBlockData().isOccluding();
         }
 
