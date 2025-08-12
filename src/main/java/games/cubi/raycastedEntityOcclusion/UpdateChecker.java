@@ -7,8 +7,6 @@ import com.google.gson.JsonParser;
 import org.bukkit.Bukkit;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
-import org.bukkit.event.EventHandler;
-
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -19,12 +17,15 @@ import java.util.concurrent.CompletableFuture;
 
 public class UpdateChecker {
     private final RaycastedEntityOcclusion plugin;
+    private final ConfigManager cfg;
 
-    public UpdateChecker(RaycastedEntityOcclusion plugin) {
+    public UpdateChecker(RaycastedEntityOcclusion plugin, ConfigManager cfg) {
         this.plugin = plugin;
-        checkForUpdates(plugin, Bukkit.getConsoleSender());
+        this.cfg = cfg;
+        if (cfg.checkForUpdates) {
+            checkForUpdates(plugin, Bukkit.getConsoleSender());
+        }
     }
-
 
     public static CompletableFuture<String> fetchFeaturedVersion(RaycastedEntityOcclusion plugin) {
         CompletableFuture<String> future = new CompletableFuture<>();
@@ -61,7 +62,7 @@ public class UpdateChecker {
                 if (plugin.getDescription().getVersion().equals(version)) {
                     audience.sendRichMessage("<green>You are using the latest version of Raycasted Entity Occlusions.");
                 } else {
-                    audience.sendRichMessage("<red>You are not using the latest version of Raycasted Entity Occlusions. Please update to <green>v" + version+".");
+                    audience.sendRichMessage("<red>You are not using the latest version of Raycasted Entity Occlusions. Please update to <green>v" + version + ".");
                     if (audience instanceof Player) audience.sendRichMessage("\n" +
                             "<hover:show_text:'https://modrinth.com/project/bCjNZu0C/versions'><aqua><u><click:open_url:'https://modrinth.com/project/bCjNZu0C/versions'>Click here to download it.</click></u></aqua></hover>");
                 }

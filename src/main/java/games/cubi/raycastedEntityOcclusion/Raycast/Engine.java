@@ -1,18 +1,18 @@
 package games.cubi.raycastedEntityOcclusion.Raycast;
 
 
-import games.cubi.raycastedEntityOcclusion.Logger;
-import games.cubi.raycastedEntityOcclusion.Snapshot.ChunkSnapshotManager;
 import games.cubi.raycastedEntityOcclusion.ConfigManager;
+import games.cubi.raycastedEntityOcclusion.Logger;
 import games.cubi.raycastedEntityOcclusion.RaycastedEntityOcclusion;
-
-import org.bukkit.Location;
-import org.bukkit.Particle;
+import games.cubi.raycastedEntityOcclusion.Snapshot.ChunkSnapshotManager;
+import games.cubi.raycastedEntityOcclusion.util.BlockPos;
 import org.bukkit.Bukkit;
-import org.bukkit.World;
-import org.bukkit.Color;
 import org.bukkit.Chunk;
+import org.bukkit.Color;
+import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.Particle;
+import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockState;
 import org.bukkit.block.TileState;
@@ -22,14 +22,16 @@ import org.bukkit.entity.Player;
 
 import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.Set;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 public class Engine {
 
-    public static ConcurrentHashMap<Location, Set<Player>> canSeeTileEntity = new ConcurrentHashMap<>();
+    private static final Particle.DustOptions BLUE = new Particle.DustOptions(Color.BLUE, 1f);
+
+    public static ConcurrentHashMap<BlockPos, Set<Player>> canSeeTileEntity = new ConcurrentHashMap<>();
     public static Set<Chunk> syncRecheck = ConcurrentHashMap.newKeySet();
 
     private final static BlockData STONE = Material.STONE.createBlockData();
@@ -39,10 +41,12 @@ public class Engine {
         final Player player;
         final Entity target;
         final Location start, predictedStart, end;
+        final boolean visible;
 
-        RayJob(Player p, Entity e, Location s, Location pred, Location t) {
+        RayJob(Player p, Entity e, boolean seen, Location s, Location pred, Location t) {
             player = p;
             target = e;
+            visible = seen;
             start = s;
             predictedStart = pred;
             end = t;
@@ -52,14 +56,16 @@ public class Engine {
     private static class RayResult {
         final Player player;
         final Entity target;
-        final boolean visible;
+        final boolean wasVisible, nowVisible;
 
-        RayResult(Player p, Entity e, boolean v) {
+        RayResult(Player p, Entity e, boolean was, boolean now) {
             player = p;
             target = e;
-            visible = v;
+            wasVisible = was;
+            nowVisible = now;
         }
     }
+
     private static class TileResult {
         final Player player;
         final Location loc;
@@ -89,7 +95,7 @@ public class Engine {
         List<RayJob> jobs = new ArrayList<>();
         for (Player p : Bukkit.getOnlinePlayers()) {
             if (p.hasPermission("raycastedentityocclusions.bypass")) continue;
-            Location eye = p.getEyeLocation().clone();
+            Location eye = p.getEyeLocation();
             Location predEye = null;
             if (cfg.engineMode == 2) {
                 // getPredictedLocation returns null if insufficient data or too slow
@@ -99,20 +105,27 @@ public class Engine {
             for (Entity e : p.getNearbyEntities(cfg.searchRadius, cfg.searchRadius, cfg.searchRadius)) {
                 if (e == p) continue;
                 // Cull-players logic
+                boolean seen = p.canSee(e);
                 if (e instanceof Player pl && (!cfg.cullPlayers || (cfg.onlyCullSneakingPlayers && !pl.isSneaking()))) {
-                    p.showEntity(plugin, e);
+                    if (!seen) {
+                        p.showEntity(plugin, e);
+                    }
                     continue;
                 }
 
-                Location target = e.getLocation().add(0, e.getHeight() / 2, 0).clone();
-                double dist = eye.distance(target);
-                if (dist <= cfg.alwaysShowRadius) {
-                    p.showEntity(plugin, e);
-                } else if (dist > cfg.raycastRadius) {
-                    p.hideEntity(plugin, e);
-                } else if (!p.canSee(e) || plugin.tick % cfg.recheckInterval == 0) {
+                Location target = e.getLocation().add(0, e.getHeight() / 2, 0);
+                double distSqr = eye.distanceSquared(target);
+                if (distSqr <= cfg.alwaysShowRadius * cfg.alwaysShowRadius) {
+                    if (!seen) {
+                        p.showEntity(plugin, e);
+                    }
+                } else if (cfg.raycastRadius > 0 && distSqr > cfg.raycastRadius * cfg.raycastRadius) {
+                    if (!seen) {
+                        p.hideEntity(plugin, e);
+                    }
+                } else if (!seen || plugin.tick % cfg.recheckInterval == 0) {
                     // schedule for async raycast (with or without predEye)
-                    jobs.add(new RayJob(p, e, eye, predEye, target));
+                    jobs.add(new RayJob(p, e, seen, eye, predEye, target));
                 }
             }
         }
@@ -128,15 +141,15 @@ public class Engine {
                 // first cast from real eye
                 boolean vis = RaycastUtil.raycast(job.start, job.end, cfg.maxOccludingCount, cfg.debugMode, snapMgr);
 
-                // if that fails and we have a predEye, cast again from predicted
+                // if that fails, and we have a predEye, cast again from predicted
                 if (!vis && job.predictedStart != null) {
                     if (cfg.debugMode) {
-                        job.predictedStart.getWorld().spawnParticle(Particle.DUST, job.predictedStart, 1, new Particle.DustOptions(Color.BLUE, 1f));
+                        job.predictedStart.getWorld().spawnParticle(Particle.DUST, job.predictedStart, 1, BLUE);
                     }
                     vis = RaycastUtil.raycast(job.predictedStart, job.end, cfg.maxOccludingCount, cfg.debugMode, snapMgr);
                 }
 
-                results.add(new RayResult(job.player, job.target, vis));
+                results.add(new RayResult(job.player, job.target, job.visible, vis));
             }
 
             // ----- PHASE 3: SYNC APPLY -----
@@ -144,11 +157,16 @@ public class Engine {
                 for (RayResult r : results) {
                     Player p = r.player;
                     Entity ent = r.target;
-                    if (p != null && ent != null) {
-                        boolean currentState = p.canSee(ent);
-                        if (currentState == r.visible) continue;
-                        if (r.visible) p.showEntity(plugin, ent);
-                        else {
+                    if (p == null || ent == null) {
+                        continue;
+                    }
+
+                    if (r.nowVisible) {
+                        if (!r.wasVisible) {
+                            p.showEntity(plugin, ent);
+                        }
+                    } else {
+                        if (r.wasVisible) {
                             p.hideEntity(plugin, ent);
                         }
                     }
@@ -158,78 +176,83 @@ public class Engine {
 
     }
 
-    private static ConcurrentLinkedQueue<TileResult> results = new ConcurrentLinkedQueue<>();
+    private static final ConcurrentLinkedQueue<TileResult> results = new ConcurrentLinkedQueue<>();
 
     public static void runTileEngine(ConfigManager cfg, ChunkSnapshotManager snapMgr, MovementTracker tracker, RaycastedEntityOcclusion plugin) {
-        if (cfg.checkTileEntities) {
-            for (Player p : Bukkit.getOnlinePlayers()) {
-                if (p.hasPermission("raycastedentityocclusions.bypass")) continue;
-                World world = p.getWorld();
-                //get player's chunk location
-                int chunkX = p.getLocation().getBlockX() >> 4;
-                int chunkZ = p.getLocation().getBlockZ() >> 4;
+        if (!cfg.checkTileEntities) {
+            return;
+        }
 
-                //async run with vars passed in
-                Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
-                    int chunksRadius = (cfg.searchRadius + 15) / 16;
-                    HashSet<Location> tileEntities = new HashSet<>();
-                    for (int x = (-chunksRadius/2)+chunkX; x <= chunksRadius+chunkX; x++) {
-                        for (int z = (-chunksRadius/2)+chunkZ; z <= chunksRadius+chunkZ; z++) {
-                            tileEntities.addAll(snapMgr.getTileEntitiesInChunk(world, x, z));
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            if (p.hasPermission("raycastedentityocclusions.bypass")) continue;
+            World world = p.getWorld();
+            //get player's chunk location
+            int chunkX = p.getLocation().getBlockX() >> 4;
+            int chunkZ = p.getLocation().getBlockZ() >> 4;
+
+            //async run with vars passed in
+            Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+                int chunksRadius = (cfg.searchRadius + 15) / 16;
+                HashSet<BlockPos> tileEntities = new HashSet<>();
+                for (int x = (-chunksRadius / 2) + chunkX; x <= chunksRadius + chunkX; x++) {
+                    for (int z = (-chunksRadius / 2) + chunkZ; z <= chunksRadius + chunkZ; z++) {
+                        tileEntities.addAll(snapMgr.getTileEntitiesInChunk(world, x, z));
+                    }
+                }
+                for (BlockPos pos : tileEntities) {
+                    Set<Player> seen = canSeeTileEntity.get(pos);
+                    boolean sees = seen != null && seen.contains(p);
+                    if (sees) {
+                        if (cfg.tileEntityRecheckInterval == 0) continue;
+                        if (plugin.tick % (cfg.tileEntityRecheckInterval * 20) != 0) continue;
+                    }
+
+                    Location loc = pos.toLocation(world);
+
+                    double distSquared = loc.distanceSquared(p.getLocation());
+                    if (sees && distSquared > cfg.searchRadius * cfg.searchRadius) {
+                        results.add(new TileResult(p, loc, false));
+                        continue;
+                    }
+                    if (!sees && distSquared < cfg.alwaysShowRadius * cfg.alwaysShowRadius) {
+                        results.add(new TileResult(p, loc, true));
+                        continue;
+                    }
+
+                    boolean visible = RaycastUtil.raycast(p.getEyeLocation(), loc, cfg.maxOccludingCount, cfg.debugMode, snapMgr);
+                    if (cfg.engineMode == 2 && !visible) {
+                        Location predEye = tracker.getPredictedLocation(p);
+                        if (predEye != null) {
+                            visible = RaycastUtil.raycast(predEye, loc, cfg.maxOccludingCount, cfg.debugMode, snapMgr);
                         }
                     }
-                    for (Location loc : tileEntities) {
-                        Set<Player> seen = canSeeTileEntity.get(loc);
-                        if (seen != null && seen.contains(p)) {
-                            if (cfg.tileEntityRecheckInterval == 0) continue;
-                            if (plugin.tick % (cfg.tileEntityRecheckInterval*20) != 0) continue;
-                        }
 
-                        if (snapMgr.getMaterialAt(loc).equals(Material.BEACON)) continue;
+//                    if (sees == visible) {
+//                        continue;
+//                    }
 
-                        double distSquared = loc.distanceSquared(p.getLocation());
-                        if (distSquared > cfg.searchRadius * cfg.searchRadius) {
-                            results.add(new TileResult(p, loc,false));
-                            continue;
-                        }
-                        if (distSquared < cfg.alwaysShowRadius * cfg.alwaysShowRadius) {
-                            results.add(new TileResult(p, loc,true));
-                            continue;
-                        }
-
-                        boolean visible = RaycastUtil.raycast(p.getEyeLocation(), loc, cfg.maxOccludingCount, cfg.debugMode, snapMgr);
-                        if (cfg.engineMode == 2 && !visible) {
-                            Location predEye = tracker.getPredictedLocation(p);
-                            if (predEye != null) {
-                                boolean result2 = RaycastUtil.raycast(predEye, loc, cfg.maxOccludingCount, cfg.debugMode, snapMgr);
-                                if (result2) {
-                                    visible = true;
-                                }
+                    if (visible) {
+                        canSeeTileEntity.computeIfAbsent(pos, k -> ConcurrentHashMap.newKeySet()).add(p);
+                    } else {
+                        Set<Player> seenPlayers = canSeeTileEntity.get(pos);
+                        if (seenPlayers != null) {
+                            seenPlayers.remove(p);
+                            if (seenPlayers.isEmpty()) {
+                                canSeeTileEntity.remove(pos);
                             }
                         }
-                        if (visible) {
-                            canSeeTileEntity.computeIfAbsent(loc, k -> ConcurrentHashMap.newKeySet()).add(p);
-                        } else {
-                            Set<Player> seenPlayers = canSeeTileEntity.get(loc);
-                            if (seenPlayers != null) {
-                                seenPlayers.remove(p);
-                                if (seenPlayers.isEmpty()) {
-                                    canSeeTileEntity.remove(loc);
-                                }
-                            }
-                        }
-                        results.add(new TileResult(p, loc, visible));
                     }
-                });
-            }
-            for (TileResult r : results) {
-                Player p = r.player;
-                Location loc = r.loc;
-                boolean visible = r.visible;
+                    results.add(new TileResult(p, loc, visible));
+                }
+            });
+        }
+        for (TileResult r : results) {
+            Player p = r.player;
+            Location loc = r.loc;
+            boolean visible = r.visible;
 
-                syncToggleTileEntity(p, loc, visible, plugin);
-                results.remove(r);
-            }
+            syncToggleTileEntity(p, loc, visible, plugin);
+            results.remove(r);
         }
     }
 
@@ -240,6 +263,7 @@ public class Engine {
             else p.sendBlockChange(location, STONE);
         });
     }
+
     public static void showTileEntity(Player p, Location location, RaycastedEntityOcclusion plugin) {
         Bukkit.getScheduler().runTask(plugin, () -> {
             Block block = location.getBlock();
@@ -247,12 +271,10 @@ public class Engine {
             if (data instanceof TileState tileData) {
                 p.sendBlockChange(location, block.getBlockData());
                 p.sendBlockUpdate(location, tileData);
-            }
-            else throw new RuntimeException("Attempting to show a block which isn't a tile entity");
+            } else plugin.getLogger().warning("Attempting to show a block which isn't a tile entity at " + block.getX() + ", " + block.getY() + ", " + block.getZ());
         });
-
-
     }
+
     public static void syncToggleTileEntity(Player p, Location loc, boolean show, RaycastedEntityOcclusion plugin) {
         if (show) {
             showTileEntity(p, loc, plugin);

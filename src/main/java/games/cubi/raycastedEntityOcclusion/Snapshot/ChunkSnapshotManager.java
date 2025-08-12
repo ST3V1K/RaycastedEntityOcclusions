@@ -4,30 +4,30 @@ import games.cubi.raycastedEntityOcclusion.ConfigManager;
 import games.cubi.raycastedEntityOcclusion.Logger;
 import games.cubi.raycastedEntityOcclusion.Raycast.Engine;
 import games.cubi.raycastedEntityOcclusion.RaycastedEntityOcclusion;
-
-import org.bukkit.Material;
-import org.bukkit.World;
+import games.cubi.raycastedEntityOcclusion.util.BlockPos;
+import games.cubi.raycastedEntityOcclusion.util.ChunkPos;
 import org.bukkit.Bukkit;
-import org.bukkit.Location;
 import org.bukkit.Chunk;
 import org.bukkit.ChunkSnapshot;
+import org.bukkit.Location;
+import org.bukkit.Material;
+import org.bukkit.World;
 import org.bukkit.block.BlockState;
 import org.bukkit.block.TileState;
+import org.bukkit.block.data.BlockData;
 import org.bukkit.scheduler.BukkitRunnable;
 
-import java.util.Set;
-import java.util.Map;
 import java.util.Collections;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class ChunkSnapshotManager {
     public static class Data {
         public final ChunkSnapshot snapshot;
-        public final ConcurrentHashMap<Location, Material> delta = new ConcurrentHashMap<>();
-        public final Set<Location> tileEntities = ConcurrentHashMap.newKeySet();
+        public final ConcurrentHashMap<BlockPos, Boolean> occluding = new ConcurrentHashMap<>();
+        public final Set<BlockPos> tileEntities = ConcurrentHashMap.newKeySet();
         public long lastRefresh;
-        public int minHeight;
-        public int maxHeight;
 
         public Data(ChunkSnapshot snapshot, long time) {
             this.snapshot = snapshot;
@@ -35,7 +35,7 @@ public class ChunkSnapshotManager {
         }
     }
 
-    private static final ConcurrentHashMap<String, Data> dataMap = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<ChunkPos, Data> dataMap = new ConcurrentHashMap<>();
     private final ConfigManager cfg;
     private final RaycastedEntityOcclusion plugin;
 
@@ -55,11 +55,18 @@ public class ChunkSnapshotManager {
                 long now = System.currentTimeMillis();
                 int chunksRefreshed = 0;
                 int chunksToRefreshMaximum = getNumberOfCachedChunks() / 3;
-                for (Map.Entry<String, Data> e : dataMap.entrySet()) {
+                for (Map.Entry<ChunkPos, Data> e : dataMap.entrySet()) {
                     if (now - e.getValue().lastRefresh >= cfg.snapshotRefreshInterval * 1000L && chunksRefreshed < chunksToRefreshMaximum) {
                         chunksRefreshed++;
-                        String key = e.getKey();
-                        snapshotChunk(key);
+                        ChunkPos pos = e.getKey();
+                        World w = Bukkit.getWorld(pos.world());
+
+                        if (w == null) {
+                            plugin.getLogger().warning("ChunkSnapshotManager: World " + pos.world() + " not found. Please report this on our discord (discord.cubi.games)'");
+                            continue;
+                        }
+
+                        snapshotChunk(w.getChunkAt(pos.chunk()));
                     }
                 }
                 if (cfg.debugMode) {
@@ -83,9 +90,7 @@ public class ChunkSnapshotManager {
         }
         dataMap.put(key(c), takeSnapshot(c, System.currentTimeMillis()));
     }
-    public void snapshotChunk(String key) {
-        snapshotChunk(getKeyChunk(key));
-    }
+
     public void removeChunkSnapshot(Chunk c) {
         if (cfg.debugMode) {
             Logger.info("ChunkSnapshotManager: Removing snapshot of chunk " + c.getWorld().getName() + ":" + c.getX() + ":" + c.getZ());
@@ -100,98 +105,86 @@ public class ChunkSnapshotManager {
         }
         Data d = dataMap.get(key(loc.getChunk()));
         if (d != null) {
-            d.delta.put(blockLoc(loc), m);
+            BlockPos pos = BlockPos.fromLocation(loc);
+            boolean occluding = m.isOccluding();
+            d.occluding.put(pos, occluding);
+
             if (cfg.checkTileEntities) {
                 // Check if the block is a tile entity
-                BlockState data = loc.getBlock().getState();
-                loc = loc.clone().add(0.5, 0.5, 0.5);
+                BlockState data = Bukkit.createBlockData(m).createBlockState();
                 if (data instanceof TileState) {
-                    if (cfg.debugMode){
+                    if (cfg.debugMode) {
                         Logger.info("ChunkSnapshotManager: Tile entity at " + loc);
                     }
-                    d.tileEntities.add(loc);
+                    d.tileEntities.add(pos);
                 } else {
-                    d.tileEntities.remove(loc);
+                    d.tileEntities.remove(pos);
                 }
             }
+        } else {
+            Logger.error("Data map value empty, ignoring block update!");
         }
-        else {Logger.error("Data map value empty, ignoring block update!");}
     }
 
     private Data takeSnapshot(Chunk c, long now) {
-        World w = c.getWorld();
-        Data data = new Data(c.getChunkSnapshot(), now);
-        int chunkX = c.getX() * 16;
-        int chunkZ = c.getZ() * 16;
-        int minHeight = w.getMinHeight();
-        int maxHeight = w.getMaxHeight();
-        data.maxHeight = maxHeight;
-        data.minHeight = minHeight;
-        if (cfg.checkTileEntities) {
-            for (int x = 0; x < 16; x++) {
-                for (int y = minHeight; y < maxHeight; y++) {
-                    for (int z = 0; z < 16; z++) {
-                        BlockState bs = data.snapshot.getBlockData(x, y, z).createBlockState();
+        ChunkSnapshot snapshot = c.getChunkSnapshot(true, false, false, false);
+        Data data = new Data(snapshot, now);
+        dataMap.put(key(c), data);
 
-                        if (bs instanceof TileState) {
-                            data.tileEntities.add(new Location(w, x+ chunkX +0.5, y+0.5, z + chunkZ+0.5));
+        if (cfg.checkTileEntities) {
+            int min = c.getWorld().getMinHeight();
+            Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+                int chunkX = c.getX() << 4;
+                int chunkZ = c.getZ() << 4;
+
+                for (int x = 0; x < 16; x++) {
+                    for (int z = 0; z < 16; z++) {
+                        int max = snapshot.getHighestBlockYAt(x, z);
+
+                        for (int y = min; y < max; y++) {
+                            BlockData blockData = snapshot.getBlockData(x, y, z);
+                            if (blockData.createBlockState() instanceof TileState && blockData.getMaterial() != Material.BEACON) {
+                                data.tileEntities.add(new BlockPos(x + chunkX, y, z + chunkZ));
+                            }
                         }
                     }
                 }
-            }
+            });
         }
+
         return data;
     }
 
-    public String key(Chunk c) {
-        return c.getWorld().getName() + ":" + c.getX() + ":" + c.getZ();
-    }
-    public String key(World world, int x, int z) {
-        return world.getName() + ":" + x + ":" + z;
-    }
-    public int getKeyX(String key) {
-        String[] parts = key.split(":");
-        return Integer.parseInt(parts[1]);
-    }
-    public int getKeyZ(String key) {
-        String[] parts = key.split(":");
-        return Integer.parseInt(parts[2]);
-    }
-    public World getKeyWorld(String key) {
-        String[] parts = key.split(":");
-        return Bukkit.getWorld(parts[0]);
-    }
-    public Chunk getKeyChunk(String key) {
-        return getKeyWorld(key).getChunkAt(getKeyX(key), getKeyZ(key));
+    public ChunkPos key(Chunk c) {
+        return new ChunkPos(c.getWorld().getUID(), c.getChunkKey());
     }
 
-    public Material getMaterialAt(Location loc) {
-        Chunk chunk = loc.getChunk();
-        Data d = dataMap.get(key(chunk));
+    public ChunkPos key(World world, int x, int z) {
+        return new ChunkPos(world.getUID(), Chunk.getChunkKey(x, z));
+    }
+
+    public boolean isOccluding(Location loc) {
+        Chunk c = loc.getChunk();
+        Data d = dataMap.get(key(c));
         if (d == null) {
-            Chunk c = loc.getChunk();
-            Logger.error("ChunkSnapshotManager: No snapshot for " + c+ " If this error persists, please report this on our discord (discord.cubi.games)");
-            Engine.syncRecheck.add(chunk);
-            return loc.getBlock().getType();
+            //dataMap.put(key(c), takeSnapshot(c, System.currentTimeMillis())); infinite loop
+            System.err.println("ChunkSnapshotManager: No snapshot for " + c + " Please report this on our discord (discord.cubi.games)'");
+            return loc.getBlock().getBlockData().isOccluding();
         }
-        double yLevel = loc.getY();
-        if (yLevel < d.minHeight || yLevel > d.maxHeight) {
-            return null;
-        }
-        Material dm = d.delta.get(blockLoc(loc));
-        if (dm != null) {
-            if (cfg.debugMode) Logger.info("Using delta");
-            return dm;
-        }
-        int x = loc.getBlockX() & 0xF;
-        int y = loc.getBlockY();
-        int z = loc.getBlockZ() & 0xF;
 
-        return d.snapshot.getBlockType(x, y, z);
+        BlockPos pos = BlockPos.fromLocation(loc);
+        Boolean occluding = d.occluding.get(pos);
+        if (occluding != null) {
+            return occluding;
+        }
+
+        occluding = d.snapshot.getBlockData(loc.getBlockX() & 0xF, loc.getBlockY(), loc.getBlockZ() & 0xF).isOccluding();
+        d.occluding.put(pos, occluding);
+        return occluding;
     }
 
     //get TileEntity Locations in chunk
-    public Set<Location> getTileEntitiesInChunk(World world, int x, int z) {
+    public Set<BlockPos> getTileEntitiesInChunk(World world, int x, int z) {
         Data d = dataMap.get(key(world, x, z));
         if (d == null) {
             return Collections.emptySet();
@@ -202,13 +195,6 @@ public class ChunkSnapshotManager {
     public int getNumberOfCachedChunks() {
         return dataMap.size();
         //created to use in a debug command maybe
-    }
-
-    public static Location blockLoc(Location fullLoc) {
-        Location blockLoc = fullLoc.toBlockLocation();
-        blockLoc.setYaw(0);
-        blockLoc.setPitch(0);
-        return blockLoc;
     }
 
 }

@@ -1,6 +1,7 @@
 snapshot-refresh-interval: 60     # seconds between chunk snapshot refresh, won't change without restart
 
 engine-mode: 1                    # 1 = straight-line; 2 = predictive and straight-line
+engine-rate: 1                    # 1 = every tick; 2 = every other tick; 3 = every third tick; etc.
 max-occluding-count: 3            # blocks before blocking
 
 debug-mode: false                 # enable debug particles and more verbose logging
@@ -16,3 +17,5 @@ recheck-interval: 50             # ticks between forced rechecks for visible ent
 
 check-tile-entities: true         # check tile entities for occlusion
 tile-entity-recheck-interval: 0   # seconds between forced rechecks for visible tile entities. If set to 0, they will never be rechecked.
+
+check-for-updates: true           # check for updates on startup

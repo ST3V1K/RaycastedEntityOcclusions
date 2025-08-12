@@ -7,6 +7,7 @@ public class ConfigManager {
     private final JavaPlugin plugin;
     public int snapshotRefreshInterval;
     public int engineMode;
+    public int engineRate;
     public int maxOccludingCount;
     public boolean debugMode;
     public int alwaysShowRadius;
@@ -17,11 +18,13 @@ public class ConfigManager {
     public int recheckInterval;
     public boolean checkTileEntities;
     public int tileEntityRecheckInterval;
+    public boolean checkForUpdates;
     public FileConfiguration cfg;
     public boolean packetEventsPresent = false;
 
     public static final int SNAPSHOT_REFRESH_INTERVAL_DEFAULT = 60;
     public static final int ENGINE_MODE_DEFAULT = 1;
+    public static final int ENGINE_RATE_DEFAULT = 1;
     public static final int MAX_OCCLUDING_COUNT_DEFAULT = 3;
     public static final boolean DEBUG_MODE_DEFAULT = false;
     public static final int ALWAYS_SHOW_RADIUS_DEFAULT = 16;
@@ -32,6 +35,7 @@ public class ConfigManager {
     public static final int RECHECK_INTERVAL_DEFAULT = 50;
     public static final boolean CHECK_TILE_ENTITIES_DEFAULT = true;
     public static final int TILE_ENTITY_RECHECK_INTERVAL_DEFAULT = 0;
+    public static final boolean CHECK_FOR_UPDATES_DEFAULT = true;
 
     public ConfigManager(JavaPlugin plugin) {
         this.plugin = plugin;
@@ -45,6 +49,7 @@ public class ConfigManager {
 
         snapshotRefreshInterval = cfg.getInt("snapshot-refresh-interval", SNAPSHOT_REFRESH_INTERVAL_DEFAULT);
         engineMode = cfg.getInt("engine-mode", ENGINE_MODE_DEFAULT);
+        engineRate = cfg.getInt("engine-rate", ENGINE_RATE_DEFAULT);
         maxOccludingCount = cfg.getInt("max-occluding-count", MAX_OCCLUDING_COUNT_DEFAULT);
         debugMode = cfg.getBoolean("debug-mode", DEBUG_MODE_DEFAULT);
 
@@ -58,9 +63,12 @@ public class ConfigManager {
         checkTileEntities = cfg.getBoolean("check-tile-entities", CHECK_TILE_ENTITIES_DEFAULT);
         tileEntityRecheckInterval = cfg.getInt("tile-entity-recheck-interval", TILE_ENTITY_RECHECK_INTERVAL_DEFAULT);
 
+        checkForUpdates = cfg.getBoolean("check-for-updates", CHECK_FOR_UPDATES_DEFAULT);
+
         // Write defaults if missing
         cfg.addDefault("snapshot-refresh-interval", SNAPSHOT_REFRESH_INTERVAL_DEFAULT);
         cfg.addDefault("engine-mode", ENGINE_MODE_DEFAULT);
+        cfg.addDefault("engine-rate", ENGINE_RATE_DEFAULT);
         cfg.addDefault("max-occluding-count", MAX_OCCLUDING_COUNT_DEFAULT);
         cfg.addDefault("debug-mode", DEBUG_MODE_DEFAULT);
         cfg.addDefault("always-show-radius", ALWAYS_SHOW_RADIUS_DEFAULT);
@@ -71,6 +79,7 @@ public class ConfigManager {
         cfg.addDefault("recheck-interval", RECHECK_INTERVAL_DEFAULT);
         cfg.addDefault("check-tile-entities", CHECK_TILE_ENTITIES_DEFAULT);
         cfg.addDefault("tile-entity-recheck-interval", TILE_ENTITY_RECHECK_INTERVAL_DEFAULT);
+        cfg.addDefault("check-for-updates", CHECK_FOR_UPDATES_DEFAULT);
         cfg.options().copyDefaults(true);
         plugin.saveConfig();
     }

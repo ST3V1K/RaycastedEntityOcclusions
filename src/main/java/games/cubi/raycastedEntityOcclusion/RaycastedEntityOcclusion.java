@@ -46,7 +46,7 @@ public class RaycastedEntityOcclusion extends JavaPlugin implements CommandExecu
         snapMgr = new ChunkSnapshotManager(this);
         tracker = new MovementTracker(this, cfg);
         commands = new CommandsManager(this, cfg);
-        new UpdateChecker(this);
+        new UpdateChecker(this, cfg);
         getServer().getPluginManager().registerEvents(new EventListener(this, snapMgr, cfg), this);
         //Brigadier API
         LiteralCommandNode<CommandSourceStack> buildCommand = commands.registerCommand();
@@ -71,11 +71,13 @@ public class RaycastedEntityOcclusion extends JavaPlugin implements CommandExecu
         new BukkitRunnable() {
             @Override
             public void run() {
+                if (tick % cfg.engineRate == 0) {
+                    Engine.runEngine(cfg, snapMgr, tracker, RaycastedEntityOcclusion.this);
+                    Engine.runTileEngine(cfg, snapMgr, tracker, RaycastedEntityOcclusion.this);
+                }
                 tick++;
-                Engine.runEngine(cfg, snapMgr, tracker, RaycastedEntityOcclusion.this);
-                Engine.runTileEngine(cfg, snapMgr, tracker, RaycastedEntityOcclusion.this);
             }
-        }.runTaskTimer(this, 0L, 1L);
+        }.runTaskTimer(this, 1L, 1L);
 
         new BukkitRunnable() {
             @Override

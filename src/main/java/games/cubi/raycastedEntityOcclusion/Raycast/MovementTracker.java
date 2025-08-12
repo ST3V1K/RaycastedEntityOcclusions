@@ -19,14 +19,13 @@ public class MovementTracker {
         new BukkitRunnable() {
             @Override
             public void run() {
-                if (config.engineMode == 2) {
-                    for (Player p : Bukkit.getOnlinePlayers()) {
-                        history.computeIfAbsent(p, k -> new ArrayDeque<>(5));
-                        Deque<Location> dq = history.get(p);
-                        if (dq.size() >= 5) dq.removeFirst();
+                if (config.engineMode != 2) return;
+                for (Player p : Bukkit.getOnlinePlayers()) {
+                    history.computeIfAbsent(p, k -> new ArrayDeque<>(5));
+                    Deque<Location> dq = history.get(p);
+                    if (dq.size() >= 5) dq.removeFirst();
 
-                        dq.addLast(p.getEyeLocation());
-                    }
+                    dq.addLast(p.getEyeLocation());
                 }
             }
         }.runTaskTimer(plugin, 1L, 1L);

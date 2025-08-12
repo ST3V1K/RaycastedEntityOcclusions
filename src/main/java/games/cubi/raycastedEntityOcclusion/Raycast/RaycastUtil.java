@@ -2,38 +2,29 @@ package games.cubi.raycastedEntityOcclusion.Raycast;
 
 import games.cubi.raycastedEntityOcclusion.Snapshot.ChunkSnapshotManager;
 import org.bukkit.Location;
-import org.bukkit.Material;
 import org.bukkit.Particle;
 import org.bukkit.util.Vector;
 
 public class RaycastUtil {
+
+    private static final Particle.DustOptions RED = new Particle.DustOptions(org.bukkit.Color.RED, 1f);
+    private static final Particle.DustOptions GREEN = new Particle.DustOptions(org.bukkit.Color.GREEN, 1f);
+
     public static boolean raycast(Location start, Location end, int maxOccluding, boolean debug, ChunkSnapshotManager snap) {
-        Particle.DustOptions dustRed = null;
-        Particle.DustOptions dustGreen = null;
-        if (debug) {
-            dustRed = new Particle.DustOptions(org.bukkit.Color.RED, 1f);
-            dustGreen = new Particle.DustOptions(org.bukkit.Color.GREEN, 1f);
-        }
-        double total = start.distance(end);
-        double traveled = 0;
+        double totalDistanceSqr = start.distanceSquared(end);
         Location curr = start.clone();
         Vector dir = end.toVector().subtract(start.toVector()).normalize();
-        while (traveled < total) {
+        while (curr.distanceSquared(start) < totalDistanceSqr) {
             curr.add(dir);
-            traveled += 1;
-            Material mat = snap.getMaterialAt(curr);
-            if (mat == null) {
-                continue;
-            }
-            if (mat.isOccluding()) {
-                maxOccluding--;
+            if (snap.isOccluding(curr)) {
                 if (debug) {
-                    start.getWorld().spawnParticle(Particle.DUST, curr, 1, dustRed);
+                    start.getWorld().spawnParticle(Particle.DUST, curr, 1, RED);
                 }
-                if (maxOccluding < 1) return false;
-            }
-            else if (debug) {
-                start.getWorld().spawnParticle(Particle.DUST, curr, 1, dustGreen);
+                if (--maxOccluding < 1) {
+                    return false;
+                }
+            } else if (debug) {
+                start.getWorld().spawnParticle(Particle.DUST, curr, 1, GREEN);
             }
         }
         return true;
