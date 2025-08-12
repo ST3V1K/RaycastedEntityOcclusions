@@ -18,4 +18,6 @@ recheck-interval: 50             # ticks between forced rechecks for visible ent
 check-tile-entities: true         # check tile entities for occlusion
 tile-entity-recheck-interval: 0   # seconds between forced rechecks for visible tile entities. If set to 0, they will never be rechecked.
 
+permission-recheck-interval: 100  # ticks between refetching the bypass permission
+
 check-for-updates: true           # check for updates on startup

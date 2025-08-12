@@ -1,4 +1,3 @@
-import kotlin.text.Regex
 import org.bxteam.runserver.ServerType
 
 buildscript {
@@ -13,7 +12,7 @@ plugins {
 }
 
 group = 'games.cubi'
-version = '1.6.1'
+version = '1.6.2'
 
 repositories {
     mavenCentral()

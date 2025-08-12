@@ -1,6 +1,7 @@
 package games.cubi.raycastedEntityOcclusion.Raycast;
 
 
+import games.cubi.raycastedEntityOcclusion.BypassPermissionManager;
 import games.cubi.raycastedEntityOcclusion.ConfigManager;
 import games.cubi.raycastedEntityOcclusion.Logger;
 import games.cubi.raycastedEntityOcclusion.RaycastedEntityOcclusion;
@@ -78,7 +79,7 @@ public class Engine {
         }
     }
 
-    public static void runEngine(ConfigManager cfg, ChunkSnapshotManager snapMgr, MovementTracker tracker, RaycastedEntityOcclusion plugin) {
+    public static void runEngine(ConfigManager cfg, ChunkSnapshotManager snapMgr, MovementTracker tracker, BypassPermissionManager permissionManager, RaycastedEntityOcclusion plugin) {
         // ----- PHASE 1: SYNC GATHER -----
 
         if (!syncRecheck.isEmpty()) {
@@ -94,7 +95,7 @@ public class Engine {
 
         List<RayJob> jobs = new ArrayList<>();
         for (Player p : Bukkit.getOnlinePlayers()) {
-            if (p.hasPermission("raycastedentityocclusions.bypass")) continue;
+            if (permissionManager.hasBypass(p)) continue;
             Location eye = p.getEyeLocation();
             Location predEye = null;
             if (cfg.engineMode == 2) {
@@ -178,13 +179,13 @@ public class Engine {
 
     private static final ConcurrentLinkedQueue<TileResult> results = new ConcurrentLinkedQueue<>();
 
-    public static void runTileEngine(ConfigManager cfg, ChunkSnapshotManager snapMgr, MovementTracker tracker, RaycastedEntityOcclusion plugin) {
+    public static void runTileEngine(ConfigManager cfg, ChunkSnapshotManager snapMgr, MovementTracker tracker, BypassPermissionManager permissionManager, RaycastedEntityOcclusion plugin) {
         if (!cfg.checkTileEntities) {
             return;
         }
 
         for (Player p : Bukkit.getOnlinePlayers()) {
-            if (p.hasPermission("raycastedentityocclusions.bypass")) continue;
+            if (permissionManager.hasBypass(p)) continue;
             World world = p.getWorld();
             //get player's chunk location
             int chunkX = p.getLocation().getBlockX() >> 4;
@@ -251,14 +252,14 @@ public class Engine {
             Location loc = r.loc;
             boolean visible = r.visible;
 
-            syncToggleTileEntity(p, loc, visible, plugin);
+            syncToggleTileEntity(p, loc, visible, permissionManager, plugin);
             results.remove(r);
         }
     }
 
-    public static void hideTileEntity(Player p, Location location, RaycastedEntityOcclusion plugin) {
+    public static void hideTileEntity(Player p, Location location, BypassPermissionManager permissionManager, RaycastedEntityOcclusion plugin) {
         Bukkit.getScheduler().runTask(plugin, () -> {
-            if (p.hasPermission("raycastedentityocclusions.bypass")) return;
+            if (permissionManager.hasBypass(p)) return;
             if (location.getBlockY() < 0) p.sendBlockChange(location, DEEPSLATE);
             else p.sendBlockChange(location, STONE);
         });
@@ -271,15 +272,16 @@ public class Engine {
             if (data instanceof TileState tileData) {
                 p.sendBlockChange(location, block.getBlockData());
                 p.sendBlockUpdate(location, tileData);
-            } else plugin.getLogger().warning("Attempting to show a block which isn't a tile entity at " + block.getX() + ", " + block.getY() + ", " + block.getZ());
+            } else
+                plugin.getLogger().warning("Attempting to show a block which isn't a tile entity at " + block.getX() + ", " + block.getY() + ", " + block.getZ());
         });
     }
 
-    public static void syncToggleTileEntity(Player p, Location loc, boolean show, RaycastedEntityOcclusion plugin) {
+    public static void syncToggleTileEntity(Player p, Location loc, boolean show, BypassPermissionManager permissionManager, RaycastedEntityOcclusion plugin) {
         if (show) {
             showTileEntity(p, loc, plugin);
         } else {
-            hideTileEntity(p, loc, plugin);
+            hideTileEntity(p, loc, permissionManager, plugin);
         }
     }
 }

@@ -18,6 +18,7 @@ public class ConfigManager {
     public int recheckInterval;
     public boolean checkTileEntities;
     public int tileEntityRecheckInterval;
+    public int permissionRecheckInterval;
     public boolean checkForUpdates;
     public FileConfiguration cfg;
     public boolean packetEventsPresent = false;
@@ -35,6 +36,7 @@ public class ConfigManager {
     public static final int RECHECK_INTERVAL_DEFAULT = 50;
     public static final boolean CHECK_TILE_ENTITIES_DEFAULT = true;
     public static final int TILE_ENTITY_RECHECK_INTERVAL_DEFAULT = 0;
+    public static final int PERMISSION_RECHECK_INTERVAL_DEFAULT = 100;
     public static final boolean CHECK_FOR_UPDATES_DEFAULT = true;
 
     public ConfigManager(JavaPlugin plugin) {
@@ -62,6 +64,7 @@ public class ConfigManager {
 
         checkTileEntities = cfg.getBoolean("check-tile-entities", CHECK_TILE_ENTITIES_DEFAULT);
         tileEntityRecheckInterval = cfg.getInt("tile-entity-recheck-interval", TILE_ENTITY_RECHECK_INTERVAL_DEFAULT);
+        permissionRecheckInterval = cfg.getInt("permission-recheck-interval", PERMISSION_RECHECK_INTERVAL_DEFAULT);
 
         checkForUpdates = cfg.getBoolean("check-for-updates", CHECK_FOR_UPDATES_DEFAULT);
 
@@ -79,6 +82,7 @@ public class ConfigManager {
         cfg.addDefault("recheck-interval", RECHECK_INTERVAL_DEFAULT);
         cfg.addDefault("check-tile-entities", CHECK_TILE_ENTITIES_DEFAULT);
         cfg.addDefault("tile-entity-recheck-interval", TILE_ENTITY_RECHECK_INTERVAL_DEFAULT);
+        cfg.addDefault("permission-recheck-interval", PERMISSION_RECHECK_INTERVAL_DEFAULT);
         cfg.addDefault("check-for-updates", CHECK_FOR_UPDATES_DEFAULT);
         cfg.options().copyDefaults(true);
         plugin.saveConfig();
@@ -114,6 +118,7 @@ public class ConfigManager {
         1 = success
          */
     }
+
     public void setPacketEventsPresent(boolean present) {
         this.packetEventsPresent = present;
     }

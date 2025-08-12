@@ -7,6 +7,7 @@ import games.cubi.raycastedEntityOcclusion.Packets.Registrar;
 import games.cubi.raycastedEntityOcclusion.Raycast.Engine;
 import games.cubi.raycastedEntityOcclusion.Raycast.MovementTracker;
 import games.cubi.raycastedEntityOcclusion.Snapshot.ChunkSnapshotManager;
+import games.cubi.raycastedEntityOcclusion.bStats.MetricsCollector;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
 import io.papermc.paper.command.brigadier.Commands;
 import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents;
@@ -15,7 +16,6 @@ import org.bukkit.command.CommandExecutor;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitRunnable;
-import games.cubi.raycastedEntityOcclusion.bStats.MetricsCollector;
 
 public class RaycastedEntityOcclusion extends JavaPlugin implements CommandExecutor {
     private ConfigManager cfg;
@@ -24,6 +24,7 @@ public class RaycastedEntityOcclusion extends JavaPlugin implements CommandExecu
     private CommandsManager commands;
     private boolean packetEventsPresent = false;
     private PacketProcessor packetProcessor = null;
+    private BypassPermissionManager bypassPermissionManager = null;
 
     public int tick = 0;
 
@@ -46,6 +47,7 @@ public class RaycastedEntityOcclusion extends JavaPlugin implements CommandExecu
         snapMgr = new ChunkSnapshotManager(this);
         tracker = new MovementTracker(this, cfg);
         commands = new CommandsManager(this, cfg);
+        bypassPermissionManager = new BypassPermissionManager(this, cfg);
         new UpdateChecker(this, cfg);
         getServer().getPluginManager().registerEvents(new EventListener(this, snapMgr, cfg), this);
         //Brigadier API
@@ -72,8 +74,8 @@ public class RaycastedEntityOcclusion extends JavaPlugin implements CommandExecu
             @Override
             public void run() {
                 if (tick % cfg.engineRate == 0) {
-                    Engine.runEngine(cfg, snapMgr, tracker, RaycastedEntityOcclusion.this);
-                    Engine.runTileEngine(cfg, snapMgr, tracker, RaycastedEntityOcclusion.this);
+                    Engine.runEngine(cfg, snapMgr, tracker, bypassPermissionManager, RaycastedEntityOcclusion.this);
+                    Engine.runTileEngine(cfg, snapMgr, tracker, bypassPermissionManager, RaycastedEntityOcclusion.this);
                 }
                 tick++;
             }
@@ -95,15 +97,19 @@ public class RaycastedEntityOcclusion extends JavaPlugin implements CommandExecu
     public ConfigManager getConfigManager() {
         return cfg;
     }
+
     public ChunkSnapshotManager getChunkSnapshotManager() {
         return snapMgr;
     }
+
     public MovementTracker getMovementTracker() {
         return tracker;
     }
+
     public CommandsManager getCommandsManager() {
         return commands;
     }
+
     public PacketProcessor getPacketProcessor() {
         return packetProcessor;
     }
